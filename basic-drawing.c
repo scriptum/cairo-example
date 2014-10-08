@@ -1,60 +1,71 @@
 #include <cairo.h>
 #include <gtk/gtk.h>
 
-/* Left click - drawing, right click - show lines */
+/* Left click - drawing, right click - clear */
+
+#define MAX_LINES 1024
 
 static void do_drawing(cairo_t *);
 
 struct {
-	int count;
-	double coordx[100];
-	double coordy[100];
+	gint count;
+	guint16 x[MAX_LINES];
+	guint16 y[MAX_LINES];
 } glob;
 
-static gboolean on_draw_event(GtkWidget *widget, cairo_t *cr, 
-		gpointer user_data)
+static gboolean
+on_expose_event(GtkWidget *widget,
+		GdkEventExpose *event G_GNUC_UNUSED,
+		gpointer data G_GNUC_UNUSED)
 {
-	cr = gdk_cairo_create(gtk_widget_get_window(widget));
+	cairo_t *cr = gdk_cairo_create(widget->window);
 	do_drawing(cr);
 	cairo_destroy(cr);
 
 	return FALSE;
 }
 
-static void do_drawing(cairo_t *cr)
+static void
+do_drawing(cairo_t *cr)
 {
-	cairo_set_source_rgb(cr, 0, 0, 0);
+	gint i;
+
+	cairo_set_source_rgb(cr, 0., 0., 0.);
 	cairo_set_line_width(cr, 0.5);
 
-	int i, j;
-	for (i = 0; i <= glob.count - 1; i++ ) {
-			for (j = 0; j <= glob.count - 1; j++ ) {
-					cairo_move_to(cr, glob.coordx[i], glob.coordy[i]);
-					cairo_line_to(cr, glob.coordx[j], glob.coordy[j]);
-			}
+	cairo_move_to(cr, glob.x[0], glob.y[0]);
+	for(i = 1; i < glob.count; i++)
+	{
+		cairo_line_to(cr, glob.x[i], glob.y[i]);
 	}
 
-	glob.count = 0;
 	cairo_stroke(cr);    
 }
 
-static gboolean clicked(GtkWidget *widget, GdkEventButton *event,
-		gpointer user_data)
+static gboolean
+clicked(GtkWidget *widget, GdkEventButton *event, gpointer data G_GNUC_UNUSED)
 {
-		if (event->button == 1) {
-				glob.coordx[glob.count] = event->x;
-				glob.coordy[glob.count++] = event->y;
-		}
-
-		if (event->button == 3) {
-				gtk_widget_queue_draw(widget);
-		}
-
-		return TRUE;
+	switch(event->button)
+	{
+		case 1:
+			if(glob.count >= MAX_LINES)
+			{
+				glob.count--;
+			}
+			glob.x[glob.count] = event->x;
+			glob.y[glob.count] = event->y;
+			glob.count++;
+			break;
+		case 3:
+			glob.count = 0;
+			break;
+	}
+	gtk_widget_queue_draw(widget);
+	return TRUE;
 }
 
-
-int main(int argc, char *argv[])
+int
+main(int argc, char **argv)
 {
 	GtkWidget *window;
 	GtkWidget *darea;
@@ -71,7 +82,7 @@ int main(int argc, char *argv[])
 	gtk_widget_add_events(window, GDK_BUTTON_PRESS_MASK);
 
 	g_signal_connect(G_OBJECT(darea), "expose-event", 
-			G_CALLBACK(on_draw_event), NULL); 
+			G_CALLBACK(on_expose_event), NULL); 
 	g_signal_connect(window, "destroy",
 			G_CALLBACK(gtk_main_quit), NULL);  
 		

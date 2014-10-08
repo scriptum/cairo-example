@@ -1,38 +1,46 @@
 #include <cairo.h>
 #include <gtk/gtk.h>
 
-void draw_gradient1(cairo_t *);
-void draw_gradient2(cairo_t *);
-void draw_gradient3(cairo_t *);
+static void draw_gradient1(cairo_t *);
+static void draw_gradient2(cairo_t *);
+static void draw_gradient3(cairo_t *);
 
-static gboolean on_draw_event(GtkWidget *widget, cairo_t *cr, 
-		gpointer user_data)
+static gboolean
+on_expose_event(GtkWidget *widget,
+		GdkEventExpose *event G_GNUC_UNUSED,
+		gpointer data G_GNUC_UNUSED)
 {
-	cr = gdk_cairo_create(gtk_widget_get_window(widget));
-	 
+	cairo_t *cr = gdk_cairo_create(gtk_widget_get_window(widget));
+
 	draw_gradient1(cr);
 	draw_gradient2(cr);
 	draw_gradient3(cr);
-	
+
 	cairo_destroy(cr);
 
 	return FALSE;
 }
 
-void draw_gradient1(cairo_t *cr)
+static void
+draw_gradient1(cairo_t *cr)
 {
 	cairo_pattern_t *pat1;  
-	pat1 = cairo_pattern_create_linear(0.0, 0.0,  350.0, 350.0);
-
 	gdouble j;
 	gint count = 1;
-	for ( j = 0.1; j < 1; j += 0.1 ) {
-			if (( count % 2 ))  {
-					cairo_pattern_add_color_stop_rgb(pat1, j, 0, 0, 0);
-			} else { 
-					cairo_pattern_add_color_stop_rgb(pat1, j, 1, 0, 0);
-			}
-	 count++;
+
+	pat1 = cairo_pattern_create_linear(0.0, 0.0,  350.0, 350.0);
+
+	for(j = 0.1; j < 1; j += 0.1)
+	{
+		if(count % 2)
+		{
+			cairo_pattern_add_color_stop_rgb(pat1, j, 0, 0, 0);
+		}
+		else
+		{ 
+			cairo_pattern_add_color_stop_rgb(pat1, j, 1, 0, 0);
+		}
+		count++;
 	}
 
 	cairo_rectangle(cr, 20, 20, 300, 100);
@@ -42,20 +50,26 @@ void draw_gradient1(cairo_t *cr)
 	cairo_pattern_destroy(pat1);
 }
 
-void draw_gradient2(cairo_t *cr)
+static void
+draw_gradient2(cairo_t *cr)
 {
 	cairo_pattern_t *pat2;
-	pat2 = cairo_pattern_create_linear(0.0, 0.0,  350.0, 0.0);
-
 	gdouble i;
 	gint count = 1;
-	for ( i = 0.05; i < 0.95; i += 0.025 ) {
-			if (( count % 2 ))  {
-					cairo_pattern_add_color_stop_rgb(pat2, i, 0, 0, 0);
-			} else { 
-					cairo_pattern_add_color_stop_rgb(pat2, i, 0, 0, 1);
-			}
-	 count++;
+
+	pat2 = cairo_pattern_create_linear(0.0, 0.0,  350.0, 0.0);
+
+	for(i = 0.05; i < 0.95; i += 0.025)
+	{
+		if(count % 2)
+		{
+			cairo_pattern_add_color_stop_rgb(pat2, i, 0, 0, 0);
+		}
+		else
+		{ 
+			cairo_pattern_add_color_stop_rgb(pat2, i, 0, 0, 1);
+		}
+		count++;
 	}
 
 	cairo_rectangle(cr, 20, 140, 300, 100);
@@ -65,7 +79,8 @@ void draw_gradient2(cairo_t *cr)
 	cairo_pattern_destroy(pat2);
 }
 
-void draw_gradient3(cairo_t *cr)
+static void
+draw_gradient3(cairo_t *cr)
 {
 	cairo_pattern_t *pat3;
 	pat3 = cairo_pattern_create_linear(20.0, 260.0, 20.0, 360.0);
@@ -77,11 +92,12 @@ void draw_gradient3(cairo_t *cr)
 	cairo_rectangle(cr, 20, 260, 300, 100);
 	cairo_set_source(cr, pat3);
 	cairo_fill(cr);  
-	
+
 	cairo_pattern_destroy(pat3);
 }
 
-int main(int argc, char *argv[])
+int
+main(int argc, char **argv)
 {
 	GtkWidget *window;
 	GtkWidget *darea;  
@@ -94,7 +110,7 @@ int main(int argc, char *argv[])
 	gtk_container_add(GTK_CONTAINER (window), darea);
 
 	g_signal_connect(G_OBJECT(darea), "expose-event", 
-			G_CALLBACK(on_draw_event), NULL);  
+			G_CALLBACK(on_expose_event), NULL);  
 	g_signal_connect(G_OBJECT(window), "destroy",
 			G_CALLBACK(gtk_main_quit), NULL);
 

@@ -1,6 +1,7 @@
 SOURCES=$(wildcard *.c)
 TARGETS=$(SOURCES:.c=)
 LIBS=`pkg-config --cflags --libs gtk+-2.0` -lm
+CFLAGS+=-O2 -Wall -Wextra -std=gnu99 -pedantic
 all: $(TARGETS)
 
 %:%.c

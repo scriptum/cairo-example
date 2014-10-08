@@ -2,20 +2,19 @@
 #include <gtk/gtk.h>
 #include <time.h>
 
-
-static char buffer[256];
+/* достаточно для хранения времени */
+static char buffer[] = "11:11:11";
 
 
 static gboolean
 on_expose_event(GtkWidget *widget,
-		GdkEventExpose *event,
-		gpointer data)
+		GdkEventExpose *event G_GNUC_UNUSED,
+		gpointer data G_GNUC_UNUSED)
 {
-	cairo_t *cr;
+	cairo_t *cr = gdk_cairo_create(widget->window);
 
-	cr = gdk_cairo_create(widget->window);
-
-	cairo_move_to(cr, 30, 30);
+	cairo_move_to(cr, 35, 50);
+	cairo_set_font_size(cr, 30);
 	cairo_show_text(cr, buffer);
 
 	cairo_destroy(cr);
@@ -33,14 +32,14 @@ time_handler(GtkWidget *widget)
 
 	curtime = time(NULL);
 	loctime = localtime(&curtime);
-	strftime(buffer, 256, "%T", loctime);
+	strftime(buffer, sizeof(buffer), "%T", loctime);
 
 	gtk_widget_queue_draw(widget);
 	return TRUE;
 }
 
 int
-main (int argc, char *argv[])
+main(int argc, char **argv)
 {
 
 	GtkWidget *window;
@@ -59,10 +58,10 @@ main (int argc, char *argv[])
 			G_CALLBACK(gtk_main_quit), NULL);
 
 	gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
-	gtk_window_set_default_size(GTK_WINDOW(window), 170, 100);
+	gtk_window_set_default_size(GTK_WINDOW(window), 200, 100);
 
 	gtk_window_set_title(GTK_WINDOW(window), "timer");
-	g_timeout_add(1000, (GSourceFunc) time_handler, (gpointer) window);
+	g_timeout_add(1000, (GSourceFunc)time_handler, (gpointer)window);
 	gtk_widget_show_all(window);
 	time_handler(window);
 

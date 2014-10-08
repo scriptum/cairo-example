@@ -23,19 +23,17 @@
 #define ANGULAR_STEP 0.05
 #define SPEED_STEP 2.0
 
-static void do_drawing(cairo_t *);
-
 typedef struct vec {
-	double x, y;
+	gdouble x, y;
 } vec;
 
 struct {
 	vec position;
 	vec speed;
-	double angle;
-	double angular_speed;
-	unsigned health;
-	unsigned score;
+	gdouble angle;
+	gdouble angular_speed;
+	guint health;
+	guint score;
 } player = {
 	.position = {
 		SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2
@@ -51,7 +49,7 @@ struct {
 } bullet = {.alive = FALSE};
 
 /* обработка нажатий клавиш */
-unsigned keystate = 0;
+guint keystate = 0;
 enum {
 	KEY_W     = 1 << 0,
 	KEY_S     = 1 << 1,
@@ -89,19 +87,23 @@ draw_player(cairo_t *cr)
 static void
 draw_bullet(cairo_t *cr)
 {
-	if(bullet.alive == FALSE) return;
+	if(FALSE == bullet.alive)
+	{
+		return;
+	}
 	cairo_arc(cr, bullet.position.x, bullet.position.y, BULLET_RADIUS, 0., 2 * M_PI);
 	cairo_stroke(cr);
 }
 
 /* Рисование мира */
 static gboolean
-draw_world(GtkWidget *widget,
-		GdkEventExpose *event,
-		gpointer data)
+draw_world(GtkWidget *widget G_GNUC_UNUSED,
+		GdkEventExpose *event G_GNUC_UNUSED,
+		gpointer data G_GNUC_UNUSED)
 {
 	cairo_t *cr;
-	static char buffer[32];
+	static gchar buffer[32];
+
 	cr = gdk_cairo_create(widget->window);
 	draw_player(cr);
 	draw_bullet(cr);
@@ -118,7 +120,7 @@ draw_world(GtkWidget *widget,
 static void
 bullet_shot()
 {
-	if(bullet.alive == FALSE)
+	if(FALSE == bullet.alive)
 	{
 		#define DELTA (M_PI_2 + M_PI_4)
 		bullet.speed.x = BULLET_SPEED * (cos(player.angle - DELTA) - sin(player.angle - DELTA)) + player.speed.x;
@@ -126,6 +128,7 @@ bullet_shot()
 		bullet.position.x = player.position.x;
 		bullet.position.y = player.position.y;
 		bullet.alive = TRUE;
+		#undef DELTA
 	}
 }
 
@@ -133,45 +136,82 @@ bullet_shot()
 static gboolean
 game_logic(GtkWidget *widget)
 {
-	if (widget->window == NULL) return FALSE;
+	g_return_val_if_fail(widget->window, FALSE);
+
 	/* организация движения в зависимости от нажатия клавиши */
 	player.speed.x = player.speed.y = player.angular_speed = 0;
-	if(keystate & KEY_W) player.speed.y -= SPEED_STEP;
-	if(keystate & KEY_S) player.speed.y += SPEED_STEP;
-	if(keystate & KEY_A) player.speed.x -= SPEED_STEP;
-	if(keystate & KEY_D) player.speed.x += SPEED_STEP;
-	if(keystate & KEY_LEFT) player.angular_speed -= ANGULAR_STEP;
-	if(keystate & KEY_RIGHT) player.angular_speed += ANGULAR_STEP;
+	if(keystate & KEY_W)
+	{
+		player.speed.y -= SPEED_STEP;
+	}
+	if(keystate & KEY_S)
+	{
+		player.speed.y += SPEED_STEP;
+	}
+	if(keystate & KEY_A)
+	{
+		player.speed.x -= SPEED_STEP;
+	}
+	if(keystate & KEY_D)
+	{
+		player.speed.x += SPEED_STEP;
+	}
+	if(keystate & KEY_LEFT)
+	{
+		player.angular_speed -= ANGULAR_STEP;
+	}
+	if(keystate & KEY_RIGHT)
+	{
+		player.angular_speed += ANGULAR_STEP;
+	}
+
 	player.angle += player.angular_speed;
 	player.position.x += player.speed.x;
 	player.position.y += player.speed.y;
+
 	/* столкновения с границами */
-	if(player.position.x < PLAYER_RADIUS) player.position.x = PLAYER_RADIUS;
-	if(player.position.x > SCREEN_WIDTH - PLAYER_RADIUS) player.position.x = SCREEN_WIDTH - PLAYER_RADIUS;
-	if(player.position.y < PLAYER_RADIUS) player.position.y = PLAYER_RADIUS;
-	if(player.position.y > SCREEN_HEIGHT - PLAYER_RADIUS) player.position.y = SCREEN_HEIGHT - PLAYER_RADIUS;
+	if(player.position.x < PLAYER_RADIUS)
+	{
+		player.position.x = PLAYER_RADIUS;
+	}
+	if(player.position.x > SCREEN_WIDTH - PLAYER_RADIUS)
+	{
+		player.position.x = SCREEN_WIDTH - PLAYER_RADIUS;
+	}
+	if(player.position.y < PLAYER_RADIUS)
+	{
+		player.position.y = PLAYER_RADIUS;
+	}
+	if(player.position.y > SCREEN_HEIGHT - PLAYER_RADIUS)
+	{
+		player.position.y = SCREEN_HEIGHT - PLAYER_RADIUS;
+	}
+
 	/* пуля летит */
-	if(bullet.alive == TRUE)
+	if(TRUE == bullet.alive)
 	{
 		bullet.position.x += bullet.speed.x;
 		bullet.position.y += bullet.speed.y;
-		/* столкновение со стеной - смерть пули */
+		/* столкновение со стеной - "смерть" пули */
 		if(bullet.position.x < BULLET_RADIUS ||
 		   bullet.position.x > SCREEN_WIDTH - BULLET_RADIUS ||
 		   bullet.position.y < BULLET_RADIUS ||
 		   bullet.position.y > SCREEN_HEIGHT - BULLET_RADIUS)
+		{
 			bullet.alive = FALSE;
+		}
 	}
-	// player.position.x += 0.1;
 	gtk_widget_queue_draw(widget);
 	return TRUE;
 }
 
 /* при нажатии клавиши устанавливаем флаг кнопки... */
 gboolean
-on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
+on_key_press(GtkWidget *widget G_GNUC_UNUSED,
+		GdkEventKey *event,
+		gpointer user_data G_GNUC_UNUSED)
 {
-	switch (event->keyval)
+	switch(event->keyval)
 	{
 		case GDK_w:
 			keystate |= KEY_W;
@@ -203,9 +243,11 @@ on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
 
 /* ...при отпускании - снимаем */
 gboolean
-on_key_release(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
+on_key_release(GtkWidget *widget G_GNUC_UNUSED,
+		GdkEventKey *event,
+		gpointer user_data G_GNUC_UNUSED)
 {
-	switch (event->keyval)
+	switch(event->keyval)
 	{
 		case GDK_w:
 			keystate &= ~KEY_W;
@@ -230,7 +272,7 @@ on_key_release(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
 }
 
 int
-main (int argc, char *argv[])
+main(int argc, char **argv)
 {
 
 	GtkWidget *window;
@@ -260,7 +302,7 @@ main (int argc, char *argv[])
 
 	gtk_window_set_title(GTK_WINDOW(window), "Game");
 	/* 60 кадров в секунду считается приемлемым для восприятия глазом */
-	g_timeout_add(1000 / FPS, (GSourceFunc) game_logic, (gpointer) window);
+	g_timeout_add(1000 / FPS, (GSourceFunc)game_logic, (gpointer)window);
 	gtk_widget_show_all(window);
 
 	gtk_main();
