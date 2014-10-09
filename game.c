@@ -17,11 +17,18 @@
 
 /* радиус пуль */
 #define BULLET_RADIUS 2.0
-#define BULLET_SPEED 4.0
+#define BULLET_SPEED 5.0
 
 /* скорость перемещения */
-#define ANGULAR_STEP 0.05
-#define SPEED_STEP 2.0
+#define ANGULAR_STEP 0.08
+#define SPEED_STEP 3.0
+
+/* количество очков за поверженного врага */
+#define ENEMY_SCORE 50
+/* стоимость пули в очках */
+#define BULLET_COST 10
+/* скорость уменьшения счёта во времени */
+#define SCORE_SPEED 2
 
 typedef struct vec {
 	gdouble x, y;
@@ -31,16 +38,23 @@ struct {
 	vec position;
 	vec speed;
 	gdouble angle;
-	gdouble angular_speed;
 	guint health;
-	guint score;
+	gint score;
+	gint topscore;
 } player = {
 	.position = {
 		SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2
 	}, 
 	.health = 100, 
-	.score = 0
+	.score = 0, 
+	.topscore = 0
 };
+
+struct {
+	vec position;
+	gdouble radius;
+	gboolean alive;
+} enemy;
 
 struct {
 	vec position;
@@ -51,12 +65,11 @@ struct {
 /* обработка нажатий клавиш */
 guint keystate = 0;
 enum {
-	KEY_W     = 1 << 0,
-	KEY_S     = 1 << 1,
-	KEY_A     = 1 << 2,
-	KEY_D     = 1 << 3,
-	KEY_LEFT  = 1 << 4,
-	KEY_RIGHT = 1 << 5,
+	MOVE_FORWARD  = 1 << 0,
+	MOVE_BACKWARD = 1 << 1,
+	ROTATE_LEFT   = 1 << 2,
+	ROTATE_RIGHT  = 1 << 3,
+	SHOT          = 1 << 4
 };
 
 static void
@@ -85,6 +98,27 @@ draw_player(cairo_t *cr)
 }
 
 static void
+draw_enemy(cairo_t *cr)
+{
+	static GdkPixbuf *enemy_image = NULL;
+
+	if(NULL == enemy_image)
+	{
+		enemy_image = gdk_pixbuf_new_from_file("hell_boy.png", NULL);
+		g_assert(NULL != enemy_image);
+		enemy.radius = gdk_pixbuf_get_width(enemy_image) / 2;
+	}
+	if(FALSE == enemy.alive)
+	{
+		return;
+	}
+	cairo_save(cr);
+	gdk_cairo_set_source_pixbuf(cr, enemy_image, enemy.position.x - enemy.radius, enemy.position.y - enemy.radius);
+	cairo_paint(cr); 
+	cairo_restore(cr);
+}
+
+static void
 draw_bullet(cairo_t *cr)
 {
 	if(FALSE == bullet.alive)
@@ -95,6 +129,19 @@ draw_bullet(cairo_t *cr)
 	cairo_stroke(cr);
 }
 
+static void
+draw_score(cairo_t *cr)
+{
+	gchar buffer[32];
+	cairo_move_to(cr, 5, 20);
+	cairo_set_font_size(cr, 14);
+	snprintf(buffer, sizeof(buffer), "Top score: %d", player.topscore);
+	cairo_show_text(cr, buffer);
+	snprintf(buffer, sizeof(buffer), "Score: %d", player.score);
+	cairo_move_to(cr, 5, 40);
+	cairo_show_text(cr, buffer);
+}
+
 /* Рисование мира */
 static gboolean
 draw_world(GtkWidget *widget G_GNUC_UNUSED,
@@ -102,19 +149,42 @@ draw_world(GtkWidget *widget G_GNUC_UNUSED,
 		gpointer data G_GNUC_UNUSED)
 {
 	cairo_t *cr;
-	static gchar buffer[32];
+
+	if(player.score > player.topscore)
+	{
+		player.topscore = player.score;
+	}
 
 	cr = gdk_cairo_create(widget->window);
+	draw_enemy(cr);
 	draw_player(cr);
 	draw_bullet(cr);
-	cairo_move_to(cr, 5, 20);
-	cairo_set_font_size(cr, 14);
-	snprintf(buffer, sizeof(buffer), "Score: %d", player.score);
-	cairo_show_text(cr, buffer);
-
+	draw_score(cr);
 	cairo_destroy(cr);
 
 	return FALSE;
+}
+
+static void add_enemy()
+{
+	if(FALSE == enemy.alive)
+	{
+		enemy.alive = TRUE;
+		enemy.position.x = g_random_int_range(enemy.radius, SCREEN_WIDTH - enemy.radius);
+		enemy.position.y = g_random_int_range(enemy.radius, SCREEN_HEIGHT - enemy.radius);
+	}
+}
+
+/* нужно для ориентации относительно "носа" игрока */
+#define DELTA (M_PI_2 + M_PI_4)
+/* преобразование угловых скоростей в координатные */
+static vec
+speed_to_vec(gdouble speed, gdouble angle)
+{
+	vec result;
+	result.x = speed * (cos(angle - DELTA) - sin(angle - DELTA));
+	result.y = speed * (sin(angle - DELTA) + cos(angle - DELTA));
+	return result;
 }
 
 static void
@@ -122,13 +192,11 @@ bullet_shot()
 {
 	if(FALSE == bullet.alive)
 	{
-		#define DELTA (M_PI_2 + M_PI_4)
-		bullet.speed.x = BULLET_SPEED * (cos(player.angle - DELTA) - sin(player.angle - DELTA)) + player.speed.x;
-		bullet.speed.y = BULLET_SPEED * (sin(player.angle - DELTA) + cos(player.angle - DELTA)) + player.speed.y;
-		bullet.position.x = player.position.x;
-		bullet.position.y = player.position.y;
+		bullet.speed = speed_to_vec(BULLET_SPEED, player.angle);
+		bullet.speed.x += player.speed.x;
+		bullet.speed.y += player.speed.y;
+		bullet.position = player.position;
 		bullet.alive = TRUE;
-		#undef DELTA
 	}
 }
 
@@ -136,36 +204,34 @@ bullet_shot()
 static gboolean
 game_logic(GtkWidget *widget)
 {
+	gdouble speed = 0, angular_speed = 0;
+
 	g_return_val_if_fail(widget->window, FALSE);
 
 	/* организация движения в зависимости от нажатия клавиши */
-	player.speed.x = player.speed.y = player.angular_speed = 0;
-	if(keystate & KEY_W)
+	if(keystate & MOVE_FORWARD)
 	{
-		player.speed.y -= SPEED_STEP;
+		speed += SPEED_STEP;
 	}
-	if(keystate & KEY_S)
+	if(keystate & MOVE_BACKWARD)
 	{
-		player.speed.y += SPEED_STEP;
+		speed -= SPEED_STEP;
 	}
-	if(keystate & KEY_A)
+	if(keystate & ROTATE_LEFT)
 	{
-		player.speed.x -= SPEED_STEP;
+		angular_speed -= ANGULAR_STEP;
 	}
-	if(keystate & KEY_D)
+	if(keystate & ROTATE_RIGHT)
 	{
-		player.speed.x += SPEED_STEP;
+		angular_speed += ANGULAR_STEP;
 	}
-	if(keystate & KEY_LEFT)
+	if(keystate & SHOT)
 	{
-		player.angular_speed -= ANGULAR_STEP;
-	}
-	if(keystate & KEY_RIGHT)
-	{
-		player.angular_speed += ANGULAR_STEP;
+		bullet_shot();
 	}
 
-	player.angle += player.angular_speed;
+	player.angle += angular_speed;
+	player.speed = speed_to_vec(speed, player.angle);
 	player.position.x += player.speed.x;
 	player.position.y += player.speed.y;
 
@@ -190,6 +256,7 @@ game_logic(GtkWidget *widget)
 	/* пуля летит */
 	if(TRUE == bullet.alive)
 	{
+		gdouble dx, dy, r;
 		bullet.position.x += bullet.speed.x;
 		bullet.position.y += bullet.speed.y;
 		/* столкновение со стеной - "смерть" пули */
@@ -200,8 +267,27 @@ game_logic(GtkWidget *widget)
 		{
 			bullet.alive = FALSE;
 		}
+		/* столкновение со врагом (пересечение окружностей) */
+		dx = bullet.position.x - enemy.position.x;
+		dy = bullet.position.y - enemy.position.y;
+		r = BULLET_RADIUS + enemy.radius;
+		if(dx * dx + dy * dy < r * r)
+		{
+			enemy.alive = bullet.alive = FALSE;
+			player.score += ENEMY_SCORE;
+		}
 	}
+
+	add_enemy();
+
 	gtk_widget_queue_draw(widget);
+
+	return TRUE;
+}
+static gboolean
+reduce_score(GtkWidget *widget G_GNUC_UNUSED)
+{
+	player.score -= SCORE_SPEED;
 	return TRUE;
 }
 
@@ -213,29 +299,24 @@ on_key_press(GtkWidget *widget G_GNUC_UNUSED,
 {
 	switch(event->keyval)
 	{
+		case GDK_Up:
 		case GDK_w:
-			keystate |= KEY_W;
+			keystate |= MOVE_FORWARD;
 			break;
+		case GDK_Down:
 		case GDK_s:
-			keystate |= KEY_S;
-			break;
-		case GDK_a:
-			keystate |= KEY_A;
-			break;
-		case GDK_d:
-			keystate |= KEY_D;
+			keystate |= MOVE_BACKWARD;
 			break;
 		case GDK_Left:
-			keystate |= KEY_LEFT;
+		case GDK_a:
+			keystate |= ROTATE_LEFT;
 			break;
 		case GDK_Right:
-			keystate |= KEY_RIGHT;
+		case GDK_d:
+			keystate |= ROTATE_RIGHT;
 			break;
-		/* для пули поведение отличается - нам достаточно факта нажатия
-		 * кнопки, не нужно выполнять сложные действия для вычисления
-		 * состояний клавиш (но можно, если понадобится стрельба очередями:)*/
 		case GDK_space:
-			bullet_shot();
+			keystate |= SHOT;
 			break;
 	}
 	return FALSE;
@@ -249,23 +330,24 @@ on_key_release(GtkWidget *widget G_GNUC_UNUSED,
 {
 	switch(event->keyval)
 	{
+		case GDK_Up:
 		case GDK_w:
-			keystate &= ~KEY_W;
+			keystate &= ~MOVE_FORWARD;
 			break;
+		case GDK_Down:
 		case GDK_s:
-			keystate &= ~KEY_S;
-			break;
-		case GDK_a:
-			keystate &= ~KEY_A;
-			break;
-		case GDK_d:
-			keystate &= ~KEY_D;
+			keystate &= ~MOVE_BACKWARD;
 			break;
 		case GDK_Left:
-			keystate &= ~KEY_LEFT;
+		case GDK_a:
+			keystate &= ~ROTATE_LEFT;
 			break;
 		case GDK_Right:
-			keystate &= ~KEY_RIGHT;
+		case GDK_d:
+			keystate &= ~ROTATE_RIGHT;
+			break;
+		case GDK_space:
+			keystate &= ~SHOT;
 			break;
 	}
 	return FALSE;
@@ -303,6 +385,8 @@ main(int argc, char **argv)
 	gtk_window_set_title(GTK_WINDOW(window), "Game");
 	/* 60 кадров в секунду считается приемлемым для восприятия глазом */
 	g_timeout_add(1000 / FPS, (GSourceFunc)game_logic, (gpointer)window);
+	/* каждые 100 мс уменьшаем количество очков */
+	g_timeout_add(100, (GSourceFunc)reduce_score, (gpointer)window);
 	gtk_widget_show_all(window);
 
 	gtk_main();
